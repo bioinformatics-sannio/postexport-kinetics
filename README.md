@@ -1,4 +1,4 @@
-# Post export RNA kinetic
+# Post-export RNA kinetic  
 ### Predict post-export RNA processing with a nested ODE kinetic test
 
 Compartment-resolved kinetic inference and **nested hypothesis testing** for detecting **post-export RNA processing** from time-resolved nuclear/cytoplasmic transcriptomic data.
@@ -9,71 +9,88 @@ This repository contains the R implementation of the modeling and inference fram
 
 ---
 
-## What problem does it solve?
+## Overview
 
-Many analyses treat RNA processing (e.g., splicing) as purely nuclear. However, in several biological contexts, **RNA processing and remodeling may continue after nuclear export**.
+Many transcriptomic analyses assume that RNA processing (e.g., splicing) occurs exclusively in the nucleus. However, increasing evidence suggests that **RNA processing and remodeling may continue after nuclear export**.
 
-Given time-resolved measurements of four RNA pools for each gene/event:
+This repository provides:
+
+- A **mechanistic ODE-based model** of RNA kinetics  
+- A **nested hypothesis testing framework**  
+- Tools to assess whether **cytoplasmic processing (σ_c)** is supported by the data  
+- Scripts to **fully reproduce all results** presented in the paper  
+
+---
+
+## Model inputs
+
+The method operates on time-resolved measurements of four RNA pools:
 
 - **N(t)**: nuclear *unprocessed* RNA  
-- **N\_s(t)**: nuclear *processed* RNA  
+- **N_s(t)**: nuclear *processed* RNA  
 - **C(t)**: cytoplasmic *unprocessed* RNA  
-- **C\_s(t)**: cytoplasmic *processed* RNA  
+- **C_s(t)**: cytoplasmic *processed* RNA  
 
-`nestedRNA` fits a mechanistic kinetic model and tests whether a **cytoplasmic conversion term** (σ\_c) is supported by the data.
+The model estimates kinetic parameters and compares:
 
----
-
-## Model (mechanistic core)
-
-The framework models the four pools with a first-order linear ODE system:
-
-$$
-\begin{aligned}
-\frac{dN(t)}{dt} &= R - \sigma_n N(t) - \tau N(t) \\
-\frac{dN_s(t)}{dt} &= \sigma_n N(t) - \tau_s N_s(t) \\
-\frac{dC(t)}{dt} &= \tau N(t) - \sigma_c C(t) - \alpha C(t) \\
-\frac{dC_s(t)}{dt} &= \tau_s N_s(t) + \sigma_c C(t) - \alpha_s C_s(t)
-\end{aligned}
-$$
-
-- The parameter of interest is **σ\_c ≥ 0** (post-export conversion).
-- The **nested null model** sets **σ\_c = 0**.
+- **Null model**: no cytoplasmic processing  
+- **Alternative model**: includes cytoplasmic processing (σ_c)
 
 ---
 
-## Inference & statistical test (high-level)
+## Repository structure
 
-1) **Integral balance discretization (Crank–Nicolson)** over each interval \([t_k, t_{k+1}]\)  
-   → avoids numerical differentiation of noisy trajectories.
+The repository is organized into four main directories:
 
-2) **Weighted non-negative least squares (NNLS)** for parameter estimation  
-   → enforces non-negativity of kinetic rates and stabilizes estimation.
+### `commons/`
+Utility functions shared across the project:
 
-3) **Nested model comparison** (Full vs Null) using RSS difference  
-   $$T = \mathrm{RSS}_0 - \mathrm{RSS}_1$$
+- Data handling  
+- Plotting utilities  
+- General helper functions  
 
-4) **Rademacher wild bootstrap** under the null  
-   → provides calibrated one-sided p-values in the presence of boundary constraints (σ\_c ≥ 0).
+### `ode_model/`
+Core implementation of the kinetic model:
 
----
+- ODE system definition  
+- Parameter estimation  
+- Nested hypothesis testing  
+- Model fitting routines  
 
-## Requirements
+### `real_datasets/`
+Scripts to reproduce results on **real datasets**.
 
-- R (>= 4.1 recommended)
-- Suggested R packages (depending on your implementation choices):
-  - `nnls`, `Matrix`, `stats`
-  - `data.table` / `dplyr` for data handling
-  - `ggplot2` for plotting
-  - `BiocManager` if integrating with Bioconductor infrastructure
+- Each dataset (GSE) has its own subdirectory  
+- Inside each GSE directory:
+  - Scripts to generate **time-course RNA states** starting from **rMATS outputs**
 
-> If you are packaging this as an R package, keep dependencies minimal and list them in `DESCRIPTION`.
+Main entry point:
 
----
+- `run_nested_test.r` → runs the full analysis across all 4 datasets
 
-## Installation
+### `synthetic_dataset/`
+Scripts for **simulation and benchmarking** on synthetic data.
 
-### From GitHub (development)
-```r
-install.packages("remotes")
-remotes::install_github("<GITHUB_ORG_OR_USER>/nested-rna")
+- `gen_synthetic_ODE_states.r`  (run first)
+  → generates synthetic RNA time-course data from the ODE model  
+
+- `run_tests.r`  
+  → runs the nested tests on synthetic data  
+
+- `fig_pr_roc.r`  
+  → generates Precision-Recall and ROC curves  
+
+- `fig_calibration_power.r`  
+  → generates calibration and statistical power plots  
+
+### Settings
+All scripts include explicit documentation in their headers, describing:
+-	Required input files
+-	Output formats
+-	Model parameters
+-	Optional arguments
+
+### Notes
+-	Synthetic data must be generated before running synthetic tests
+-	Real dataset preprocessing depends on rMATS outputs
+-	Plotting scripts reproduce the figures from the paper
