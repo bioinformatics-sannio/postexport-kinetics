@@ -61,47 +61,31 @@ BiocManager::install(c(
 
 The repository is organized into four main directories:
 
-### `commons/`
-Utility functions shared across the project:
+- `commons/` utility functions shared across the project for: data handling ,plotting utilities, and general helper functions.
 
-- Data handling  
-- Plotting utilities  
-- General helper functions  
+- `ode_model/` core implementation of the kinetic model: ODE system definition ,parameter estimation, nested hypothesis testing, model fitting routines.
 
-### `ode_model/`
-Core implementation of the kinetic model:
+- `real_datasets/` scripts to reproduce results on **real datasets**. Each dataset (GSE) has its own subdirectory. Inside each GSE directory a script `gen_RMATS_table.r` generates **time-course RNA states** starting from **rMATS outputs** (.csv provided in each directory).
 
-- ODE system definition  
-- Parameter estimation  
-- Nested hypothesis testing  
-- Model fitting routines  
+- `synthetic_dataset/` scripts for **simulation and benchmarking** on synthetic data.
 
-### `real_datasets/`
-Scripts to reproduce results on **real datasets**.
+### Synthetic data
 
-- Each dataset (GSE) has its own subdirectory  
-- Inside each GSE directory a script `gen_RMATS_table.r` generate **time-course RNA states** starting from **rMATS outputs** provided in each directory
+Synthetic data must be generated first with `gen_synthetic_ODE_states.r`. The script generates synthetic RNA time-course data from the ODE model. Generation parameters can be set in the header of the script.
 
-- `run_nested_test.r` → runs the full analysis across all 4 datasets
+The test (nested and PSI) can then be executed with `run_tests.r`. The script runs the nested tests on synthetic data. The execution can be performed in parallel using the parallel R package.
 
-### `synthetic_dataset/`
-Scripts for **simulation and benchmarking** on synthetic data.
+Figures and tables reported in the paper can be obtained with `fig_pr_roc.r`, which generates Precision-Recall and ROC curves, and `fig_calibration_power.r`, which generates calibration and statistical power plots.
 
-- `gen_synthetic_ODE_states.r`  (run first)
-  → generates synthetic RNA time-course data from the ODE model  
+### Real data
 
-- `run_tests.r`  
-  → runs the nested tests on synthetic data  
-
-- `fig_pr_roc.r`  
-  → generates Precision-Recall and ROC curves  
-
-- `fig_calibration_power.r`  
-  → generates calibration and statistical power plots  
+Real datasets are obtained with rMATS from raw fasq RNA-seq data. Reads can be aligned with STAR, and the bam output can be analyzed with rMATS. The output of rMATS is the processed with `rmats_preprocessing.r` to obtain abdundance estimate of the four species adopted by the ODE model. In each GSE directory the output of rMATS is provided as .csv file. 
+With `run_nested_test.r` the rMATS outputs are merged and analyzed with the nested test. 
+`fig_diagnostics.r`, `fig_representative_dynamics.r`, and `go_analysis.r` provide the necessary script to obtain figures and table reported in the paper.
 
 ### Settings
 
-All scripts assume that the repository has been cloned in your home directory (~) and include explicit documentation in their headers, describing:
+All scripts assume that the repository has been cloned in the home directory (~) and include explicit documentation in their headers, describing:
 
 -	Required input files
 -	Output formats
