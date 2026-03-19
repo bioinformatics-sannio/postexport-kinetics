@@ -55,7 +55,7 @@ if (!requireNamespace("BiocManager", quietly = TRUE))
 BiocManager::install(c(
   "org.Hs.eg.db","org.Mm.eg.db","org.Dm.eg.db"
 ))
-`
+```
 
 ### Repository organization
 
