@@ -79,9 +79,11 @@ Figures and tables reported in the paper can be obtained with `fig_pr_roc.r`, wh
 
 ### Real data
 
-Real datasets are obtained with rMATS from raw fasq RNA-seq data. Reads can be aligned with STAR, and the bam output can be analyzed with rMATS. The output of rMATS is the processed with `rmats_preprocessing.r` to obtain abdundance estimate of the four species adopted by the ODE model. In each GSE directory the output of rMATS is provided as .csv file. 
-With `run_nested_test.r` the rMATS outputs are merged and analyzed with the nested test. 
-`fig_diagnostics.r`, `fig_representative_dynamics.r`, and `go_analysis.r` provide the necessary script to obtain figures and table reported in the paper.
+Real datasets are derived from RNA-seq experiments processed with rMATS, starting from raw FASTQ files. Raw reads are aligned to the reference genome using tools such as STAR, producing BAM files. The aligned reads are analyzed with rMATS to obtain event-level counts for inclusion/skipping isoforms across compartments and time points. The rMATS outputs are then processed using `rmats_preprocessing.r`. This step converts rMATS outputs into time-resolved abundance estimates of the four RNA species required by the ODE model. For convenience, in each GSE directory the processed rMATS outputs are already provided as .csv files.
+
+The nested test can be applied to all datasets using `run_nested_test.r`. This script merges all datasets, applies quality filtering, and runs the nested kinetic test on each event.
+
+The main figures and tables reported in the manuscript can be reproduced using: `fig_diagnostics.r`, `fig_representative_dynamics.r`, and `go_analysis.r`.
 
 ### Settings
 
