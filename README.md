@@ -16,8 +16,8 @@ Many transcriptomic analyses assume that RNA processing (e.g., splicing) occurs 
 This repository basically provides scripts to reproduce results reported in the manuscript. Specifically it provides:
 
 - A **mechanistic ODE-based model** of RNA kinetics  
-- A **nested hypothesis testing framework**  
-- Tools to assess whether **cytoplasmic processing (σ_c)** is supported by the data  in real and synthetic datasets
+- A **cytoplasmic processing (σ_c) nested hypothesis testing framework**  with variance shrinkage for stability, weighted regression (heteroskedastic noise), non-negativity constraints (NNLS), and bootstrap-based inference due to boundary parameters.
+- **Synthetic** and **real** datasets used to test the framework.
 
 ---
 
@@ -87,22 +87,7 @@ The main figures and tables reported in the manuscript can be reproduced using: 
 
 ### Settings
 
-All scripts assume that the repository has been cloned in the home directory (~) and include explicit documentation in their headers, describing:
+All scripts assume that the repository has been cloned in the home directory (~) and include explicit documentation in their headers, describing required input files, output formats, model parameters, and any other parameter for the reproduction of results.
 
--	Required input files
--	Output formats
--	Model parameters
--	Optional arguments
 
-### Notes
 
-The implementation includes:
-- variance shrinkage for stability
-- weighted regression (heteroskedastic noise)
-- non-negativity constraints (NNLS)
-- bootstrap-based inference due to boundary parameters
-
-The full pipeline is fully reproducible starting from: synthetic simulations or rMATS-derived real datasets
-
--	Synthetic data must be generated before running synthetic tests
--	Plotting scripts to reproduce the figures from the paper are provided
