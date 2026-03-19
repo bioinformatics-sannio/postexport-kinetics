@@ -5,7 +5,7 @@ Compartment-resolved kinetic inference and **nested hypothesis testing** for det
 
 This repository contains the R implementation of the modeling and inference framework described in:
 
-> Faretra L., Napolitano F., Pancione M., Cerulo L. (2026). *A kinetic modeling framework to detect post-export RNA processing from time-resolved transcriptomic data.* Manuscript.
+> Faretra L., Napolitano F., Pancione M., Cerulo L. (2026). *A kinetic modeling framework to detect post-export RNA processing from time-resolved transcriptomic data.* Submitted manuscript.
 
 ---
 
@@ -13,12 +13,11 @@ This repository contains the R implementation of the modeling and inference fram
 
 Many transcriptomic analyses assume that RNA processing (e.g., splicing) occurs exclusively in the nucleus. However, increasing evidence suggests that **RNA processing and remodeling may continue after nuclear export**.
 
-This repository provides:
+This repository basically provides scripts to reproduce results reported in the manuscript. Specifically it provides:
 
 - A **mechanistic ODE-based model** of RNA kinetics  
 - A **nested hypothesis testing framework**  
-- Tools to assess whether **cytoplasmic processing (σ_c)** is supported by the data  
-- Scripts to **fully reproduce all results** presented in the paper  
+- Tools to assess whether **cytoplasmic processing (σ_c)** is supported by the data  in real and synthetic datasets
 
 ---
 
@@ -38,7 +37,27 @@ The model estimates kinetic parameters and compares:
 
 ---
 
-## Repository structure
+## Required packages
+
+Required packages can be installe as follows
+
+```r
+install.packages(c(
+  "data.table","deSolve","nnls","MASS","parallel",
+  "ggplot2","patchwork","scales","plotROC","pROC","PRROC",
+  "biomaRt","AnnotationDbi","clusterProfiler","ReactomePA","enrichplot",
+  "openxlsx","knitr","tidyr"
+))
+
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+
+BiocManager::install(c(
+  "org.Hs.eg.db","org.Mm.eg.db","org.Dm.eg.db"
+))
+`
+
+### Repository organization
 
 The repository is organized into four main directories:
 
@@ -61,10 +80,7 @@ Core implementation of the kinetic model:
 Scripts to reproduce results on **real datasets**.
 
 - Each dataset (GSE) has its own subdirectory  
-- Inside each GSE directory:
-  - Scripts to generate **time-course RNA states** starting from **rMATS outputs**
-
-Main entry point:
+- Inside each GSE directory a script `gen_RMATS_table.r` generate **time-course RNA states** starting from **rMATS outputs** provided in each directory
 
 - `run_nested_test.r` → runs the full analysis across all 4 datasets
 
@@ -84,13 +100,23 @@ Scripts for **simulation and benchmarking** on synthetic data.
   → generates calibration and statistical power plots  
 
 ### Settings
-All scripts include explicit documentation in their headers, describing:
+
+All scripts assume that the repository has been cloned in your home directory (~) and include explicit documentation in their headers, describing:
+
 -	Required input files
 -	Output formats
 -	Model parameters
 -	Optional arguments
 
 ### Notes
+
+The implementation includes:
+- variance shrinkage for stability
+- weighted regression (heteroskedastic noise)
+- non-negativity constraints (NNLS)
+- bootstrap-based inference due to boundary parameters
+
+The full pipeline is fully reproducible starting from: synthetic simulations or rMATS-derived real datasets
+
 -	Synthetic data must be generated before running synthetic tests
--	Real dataset preprocessing depends on rMATS outputs
--	Plotting scripts reproduce the figures from the paper
+-	Plotting scripts to reproduce the figures from the paper are provided
