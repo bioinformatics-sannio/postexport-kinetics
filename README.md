@@ -79,11 +79,23 @@ Figures and tables reported in the paper can be obtained with `fig_pr_roc.r`, wh
 
 ### Real data
 
-Real datasets are derived from RNA-seq experiments processed with rMATS, starting from raw FASTQ files. Raw reads are aligned to the reference genome using tools such as STAR, producing BAM files. The aligned reads are analyzed with rMATS to obtain event-level counts for inclusion/skipping isoforms across compartments and time points. The rMATS outputs are then processed using `rmats_preprocessing.r`. This step converts rMATS outputs into time-resolved abundance estimates of the four RNA species required by the ODE model. For convenience, in each GSE directory the processed rMATS outputs are already provided as .csv files.
+Real datasets are derived from RNA-seq experiments, deposited by the respective studies. Raw FASTQ reads are aligned to the reference genomes using STAR (v2.7) and processed according to authors directives. The aligned reads then analyzed with rMATS to obtain event-level counts for inclusion/skipping isoforms across compartments and time points. The rMATS outputs are then converted into time-resolved abundance estimates of the four RNA species required by the ODE model. For convenience, in each GSE directory the processed rMATS outputs are already provided as .csv files.
 
 The nested test can be applied to all datasets using `run_nested_test.r`. This script merges all datasets, applies quality filtering, and runs the nested kinetic test on each event.
 
 The main figures and tables reported in the manuscript can be reproduced using: `fig_diagnostics.r`, `fig_representative_dynamics.r`, and `go_analysis.r`.
+
+#### Details on raw data processing
+
+To reproduce the processing from raw FASTQ files we applied the following procedure:
+
+- For the GSE207924 (human K562 and mouse NIH3T3 cells), we followed the workflow described by Chen et al. Adapter sequences and low-quality bases were removed using `cutadapt`, reads were aligned to a chimeric reference genome, retrieved from Zenodo, using STAR (v2.7), and aligned reads were then filtered using `samtools` to remove secondary alignments, PCR duplicates, and unmapped mates, and subsequently partitioned into host-specific, mitochondrial, and spike-in subsets based on chromosome identifiers. The shell script `GSE207924.sh` implements the above described FASTQ processing pipeline. 
+
+- For the GSE83620 (D. melanogaster), initial quality control and adapter trimming were performed using `fastp`, including poly-G tail removal. Reads were aligned to the D. melanogaster (BDGP6) and S. cerevisiae (R64-1) genomes, the latter serving as a normalization spike-in. The shell script `GSE83620.sh` implements the above described FASTQ processing pipeline.
+
+Intron retention (RI) events were quantified using rMATS (v4.1), configured for paired-end reads in GSE207924 and single-end reads in GSE83620, both with support for variable read lengths. This analysis provided event-level counts for inclusion isoforms (reads supporting intron retention) and skipping isoforms (reads supporting exon-exon junctions) across nuclear and cytoplasmic compartments at all time points.
+
+Downstream processing was performed in the R environment using the script rmats_preprocessing.r, which converts rMATS outputs into time-resolved abundance estimates of the four RNA species required by the ODE model. To account for technical variability in sequencing depth and sample recovery, raw counts were normalized using exogenous spike-ins: ERCC counts for human and mouse datasets, and yeast-mapped reads for Drosophila. Counts were first adjusted for effective isoform length—accounting for differences between Inclusion and Skipping forms—and subsequently scaled by the total number of uniquely mapped spike-in reads.
 
 ### Settings
 
