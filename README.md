@@ -16,7 +16,7 @@ Many transcriptomic analyses assume that RNA processing (e.g., splicing) occurs 
 This repository basically provides scripts to reproduce results reported in the manuscript. Specifically it provides:
 
 - A **mechanistic ODE-based model** of RNA kinetics  
-- A **cytoplasmic processing (σ_c) nested hypothesis testing framework**  with variance shrinkage for stability, weighted regression (heteroskedastic noise), non-negativity constraints (NNLS), and bootstrap-based inference due to boundary parameters.
+- A **cytoplasmic processing ($\sigma_c$) nested hypothesis testing framework**  with variance shrinkage for stability, weighted regression (heteroskedastic noise), non-negativity constraints (NNLS), and bootstrap-based inference due to boundary parameters.
 - **Synthetic** and **real** datasets used to test the framework.
 
 ---
@@ -25,15 +25,15 @@ This repository basically provides scripts to reproduce results reported in the 
 
 The method operates on time-resolved measurements of four RNA pools:
 
-- **N(t)**: nuclear *unprocessed* RNA  
-- **N_s(t)**: nuclear *processed* RNA  
-- **C(t)**: cytoplasmic *unprocessed* RNA  
-- **C_s(t)**: cytoplasmic *processed* RNA  
+- $N(t)$: nuclear *unprocessed* RNA  
+- $N_s(t)$: nuclear *processed* RNA  
+- $C(t)$: cytoplasmic *unprocessed* RNA  
+- $C_s(t)$: cytoplasmic *processed* RNA  
 
 The model estimates kinetic parameters and compares:
 
 - **Null model**: no cytoplasmic processing  
-- **Alternative model**: includes cytoplasmic processing (σ_c)
+- **Alternative model**: includes cytoplasmic processing ($\sigma_c$)
 
 ---
 
