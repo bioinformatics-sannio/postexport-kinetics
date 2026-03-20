@@ -1,5 +1,4 @@
-# Post-export RNA kinetic  
-### Predict post-export RNA processing with a nested ODE kinetic test
+## Post-export RNA kinetic  
 
 Compartment-resolved kinetic inference and **nested hypothesis testing** for detecting **post-export RNA processing** from time-resolved nuclear/cytoplasmic transcriptomic data.
 
@@ -9,7 +8,7 @@ This repository contains the R implementation of the modeling and inference fram
 
 ---
 
-## Overview
+### Overview
 
 Many transcriptomic analyses assume that RNA processing (e.g., splicing) occurs exclusively in the nucleus. However, increasing evidence suggests that **RNA processing and remodeling may continue after nuclear export**.
 
@@ -21,7 +20,7 @@ This repository basically provides scripts to reproduce results reported in the 
 
 ---
 
-## Model inputs
+### Model inputs
 
 The method operates on time-resolved measurements of four RNA pools:
 
@@ -37,7 +36,7 @@ The model estimates kinetic parameters and compares:
 
 ---
 
-## Required packages
+### Required packages
 
 Required packages can be installe as follows
 
