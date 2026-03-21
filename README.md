@@ -45,7 +45,7 @@ install.packages(c(
   "data.table","deSolve","nnls","MASS","parallel",
   "ggplot2","patchwork","scales","plotROC","pROC","PRROC",
   "biomaRt","AnnotationDbi","clusterProfiler","ReactomePA","enrichplot",
-  "openxlsx","knitr","tidyr"
+  "openxlsx","knitr","tidyr","readr"
 ))
 
 if (!requireNamespace("BiocManager", quietly = TRUE))
@@ -100,7 +100,17 @@ Subsequent downstream processing was performed in R to integrate and refine the 
 
 ### Settings
 
-All scripts assume that the repository has been cloned in the home directory (~) and include explicit documentation in their headers, describing required input files, output formats, model parameters, and any other parameter for the reproduction of results.
+All scripts assume that the repository has been cloned in the home directory (~) and include explicit documentation in their headers, describing required input files, output formats, model parameters, and any other parameter for the reproduction of results. 
+
+To reproduce the processed rMATS output starting from raw FASTQ files, the provided shell scripts are designed to run in a recent Linux environment (Bash, R, wget, gzip) with the following tools properly installed and configured:
+- `SRA Toolkit` - https://hpc.nih.gov/apps/sratoolkit.html
+- `cutadapt` - https://cutadapt.readthedocs.io/en/stable/
+- `STAR` - https://github.com/alexdobin/STAR
+- `samtools` - https://www.htslib.org/
+- `rMATS` - https://rnaseq-mats.sourceforge.io/
+- `fastp` - https://github.com/opengene/fastp
+- `rsem` - https://github.com/deweylab/RSEM
+
 
 
 
