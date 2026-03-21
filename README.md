@@ -84,7 +84,7 @@ The nested test can be applied to all datasets using `run_nested_test.r`. This s
 
 The main figures and tables reported in the manuscript can be reproduced using: `fig_diagnostics.r`, `fig_representative_dynamics.r`, and `go_analysis.r`.
 
-#### Details on raw data processing
+#### Details to reproduce processed rMATS output from raw fastq files
 
 To reproduce the processing from raw FASTQ files we applied the following procedure:
 
