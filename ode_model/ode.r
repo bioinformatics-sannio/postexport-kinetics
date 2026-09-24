@@ -1,364 +1,1290 @@
 # =============================================================================
 # Title: ODE-Based Simulation Utilities for RNA Kinetics
+#
 # Description:
-#   This script defines the compartmental RNA kinetics model and helper
-#   functions to:
-#     - compute its ODE dynamics,
-#     - derive steady-state values in closed form,
-#     - sample random parameter sets,
-#     - generate replicate-level simulated trajectories,
-#     - optionally simulate transcriptional shutoff,
-#     - extract sampled observations at selected time points.
+#   Four-state RNA kinetics model with support for:
+#     - continuous transcription,
+#     - complete transcriptional shutoff,
+#     - partial / pseudo-shutoff with residual transcription,
+#     - replicate-level biological variability,
+#     - destructive sampling at selected time points,
+#     - gene-specific transcription-onset heterogeneity.
 #
-# Included functionality:
-#   - four-state ODE system,
-#   - parameter-range definitions,
-#   - steady-state formulas,
-#   - random parameter generation,
-#   - replicate simulation with biological variability,
-#   - optional intervention at time t_star,
-#   - time subsampling for downstream inference.
+# IMPORTANT SEMANTICS
+# -------------------
+#   The pharmacological intervention time t_star is COMMON to all genes and
+#   replicates.
 #
-# Intended use:
-#   Research code accompanying the paper and shared for transparency/review.
+#   Gene-specific temporal heterogeneity is implemented by changing the
+#   transcriptional HISTORY before t_star, NOT by shifting observations after
+#   the intervention has been simulated.
 #
-# Copyright (c) 2026 Luigi Cerulo
+#   A positive onset_shift means later transcriptional onset.
+#   A negative onset_shift means earlier transcriptional onset; this is
+#   implemented by a pre-run before the nominal simulation origin.
 #
-# Permission is hereby granted to use, copy, modify, and distribute this
-# software for academic and research purposes, provided that this notice is
-# retained in all copies.
+#   Therefore, for every gene:
 #
-# This software is provided "as is", without warranty of any kind, express
-# or implied, including but not limited to the warranties of merchantability,
-# fitness for a particular purpose, and noninfringement. In no event shall
-# the authors be liable for any claim, damages, or other liability arising
-# from, out of, or in connection with the software or its use.
+#       observed time t_star == true intervention time t_star
+#
+#   and after t_star:
+#
+#       R_post = post_R_fraction * R_pre
+#
+#   post_R_fraction = 0   -> complete shutoff
+#   post_R_fraction = 0.1 -> 10% residual transcription
+#   post_R_fraction = 1   -> no effective shutoff
+#
+# Backward compatibility:
+#   - generate_ODE_states() retains the old argument use_time_shift.
+#   - use_time_shift is now interpreted as transcription-onset heterogeneity.
+#   - the returned field time_shift is retained as an alias of onset_shift.
+#   - apply_observation_shift() is retained only as a legacy helper and is NOT
+#     used by generate_ODE_states().
 # =============================================================================
 
 
 library(deSolve)
 
 
-# -----------------------------------------------------------------------------
-# Four-state ODE system for RNA kinetics.
-#
-# State variables:
-#   - N   : nuclear unprocessed RNA
-#   - N_s : nuclear processed RNA
-#   - C   : cytoplasmic unprocessed RNA
-#   - C_s : cytoplasmic processed RNA
-#
-# Parameters:
-#   - R        : transcription/input rate
-#   - sigma_n  : nuclear processing rate
-#   - tau      : export/transition rate from N to C
-#   - tau_s    : export/transition rate from N_s to C_s
-#   - sigma_c  : cytoplasmic processing rate
-#   - alpha    : degradation rate of C
-#   - alpha_s  : degradation rate of C_s
-#
-# Output:
-#   A list containing the derivatives in the order expected by deSolve::ode().
-# -----------------------------------------------------------------------------
+# =============================================================================
+# 1. Four-state ODE
+# =============================================================================
+
 rna_kinetics <- function(t, y, params) {
-  with(as.list(c(y, params)), {
-    dN <- R - sigma_n * N - tau * N
-    dN_s <- sigma_n * N - tau_s * N_s
-    dC <- tau * N - sigma_c * C - alpha * C
-    dC_s <- tau_s * N_s + sigma_c * C - alpha_s * C_s
 
-    # Optional debug line:
-    # print(paste("Time:", t, "dN:", dN, "dN_s:", dN_s, "dC:", dC, "dC_s:", dC_s))
+  with(
+    as.list(c(y, params)),
+    {
 
-    list(c(dN, dN_s, dC, dC_s))
-  })
-}
+      dN <-
+        R -
+        sigma_n * N -
+        tau * N
 
+      dN_s <-
+        sigma_n * N -
+        tau_s * N_s
 
-# -----------------------------------------------------------------------------
-# Default parameter ranges used for simulation.
-#
-# These ranges define the support of the uniform distributions sampled by
-# random_params(). They can be overridden when needed.
-# -----------------------------------------------------------------------------
-r_tau_min = 0.006
-r_tau_max = 0.06
-r_tau_s_min = 0.003
-r_tau_s_max = 0.03
+      dC <-
+        tau * N -
+        sigma_c * C -
+        alpha * C
 
-r_alpha_min = 0.03
-r_alpha_max = 0.69
-r_alpha_s_min = 0.01
-r_alpha_s_max = 0.23
+      dC_s <-
+        tau_s * N_s +
+        sigma_c * C -
+        alpha_s * C_s
 
-r_sigma_n_min = 0.05
-r_sigma_n_max = 0.2
-r_sigma_c_min = 0.05
-r_sigma_c_max = 0.2
-
-
-# -----------------------------------------------------------------------------
-# Closed-form steady states of the ODE system.
-#
-# Given a parameter list containing:
-#   R, tau, tau_s, alpha, alpha_s, sigma_n, sigma_c
-# this function returns the steady-state values of:
-#   N, N_s, C, C_s
-#
-# These formulas are useful for diagnostics and for checking that simulated
-# trajectories are consistent with the chosen parameter regime.
-# -----------------------------------------------------------------------------
-steady_states <- function(params) {
-  N = params$R / (params$tau + params$sigma_n)
-
-  N_s = params$R * params$sigma_n /
-    ((params$tau + params$sigma_n) * params$tau_s)
-
-  C = params$R * params$tau /
-    ((params$tau + params$sigma_n) * (params$alpha + params$sigma_c))
-
-  C_s = (params$sigma_n + params$sigma_c * params$tau / (params$sigma_c + params$alpha)) *
-    params$R / ((params$tau + params$sigma_n) * params$alpha_s)
-
-  return(list(N = N, N_s = N_s, C = C, C_s = C_s))
-}
-
-
-# -----------------------------------------------------------------------------
-# Sample one random parameter set from uniform ranges.
-#
-# The function samples:
-#   - tau, tau_s,
-#   - alpha, alpha_s,
-#   - sigma_n, sigma_c
-#
-# It does not sample R, which is expected to be specified separately when
-# constructing the full parameter list.
-# -----------------------------------------------------------------------------
-random_params = function(
-  rtau_min = r_tau_min, rtau_max = r_tau_max,
-  rtau_s_min = r_tau_s_min, rtau_s_max = r_tau_s_max,
-  ralpha_min = r_alpha_min, ralpha_max = r_alpha_max,
-  ralpha_s_min = r_alpha_s_min, ralpha_s_max = r_alpha_s_max,
-  rsigma_n_min = r_sigma_n_min, rsigma_n_max = r_sigma_n_max,
-  rsigma_c_min = r_sigma_c_min, rsigma_c_max = r_sigma_c_max
-) {
-
-  r_tau = runif(1, rtau_min, rtau_max)
-  r_tau_s = runif(1, rtau_s_min, rtau_s_max)
-  r_alpha = runif(1, ralpha_min, ralpha_max)
-  r_alpha_s = runif(1, ralpha_s_min, ralpha_s_max)
-
-  # Optional alternative coupling between parameters:
-  # r_rho = runif(1, 0.1, 1)
-  # r_alpha_s = r_rho * r_alpha
-
-  r_sigma_n = runif(1, rsigma_n_min, rsigma_n_max)
-  r_sigma_c = runif(1, rsigma_c_min, rsigma_c_max)
-
-  retval = list(
-    tau = r_tau,
-    tau_s = r_tau_s,
-    alpha = r_alpha,
-    alpha_s = r_alpha_s,
-    sigma_n = r_sigma_n,
-    sigma_c = r_sigma_c
-  )
-
-  return(retval)
-}
-
-
-# -----------------------------------------------------------------------------
-# Generate replicate-level ODE simulations with optional transcriptional shutoff.
-#
-# Main features:
-#   - simulates multiple biological replicates,
-#   - perturbs parameters across replicates via log-normal noise,
-#   - keeps R fixed across replicates by design,
-#   - optionally introduces a random temporal shift,
-#   - optionally applies a transcriptional shutoff at time t_star,
-#   - returns full trajectories, subsampled trajectories, steady states,
-#     and replicate-specific parameters.
-#
-# Arguments:
-#   - base_params: named parameter list including R and kinetic rates
-#   - y0: initial state vector
-#   - times: intended observation times
-#   - n_replicates: number of biological replicates
-#   - model_kinetics: ODE right-hand side function
-#   - param_cv: coefficient of variation for replicate-to-replicate variability
-#   - stimes: sampling times extracted from the full simulation
-#   - shutofftimes: sampling times extracted from shutoff trajectories
-#   - max_shift: maximum temporal shift applied to the simulation
-#   - t_star: intervention time; after this point, R is set to zero
-#
-# Output:
-#   A list containing:
-#     - data: full trajectories without shutoff
-#     - shutoff_data: trajectories with shutoff, if enabled
-#     - tsampled_data: data sampled at stimes
-#     - shutoff_tsampled_data: shutoff data sampled at shutofftimes
-#     - ss_data: closed-form steady-state values per replicate
-#     - time_shift: global random shift applied to simulated times
-#     - parameters: replicate-specific perturbed parameter values
-# -----------------------------------------------------------------------------
-generate_ODE_states <- function(
-  base_params, y0, times,
-  n_replicates = 3,
-  model_kinetics = rna_kinetics,
-  param_cv = 0.05,
-  stimes = c(10, 40, 50, 100),
-  shutofftimes = c(10, 40, 50, 100),
-  max_shift = NULL,
-  t_star = NULL
-){
-
-  # Containers for outputs across replicates.
-  data <- c()
-  shutoff_data <- c()
-  parameters <- c()
-  steady_state <- c()
-
-  # Convert coefficient of variation into log-normal sd.
-  sdlog <- if (param_cv > 0) sqrt(log(1 + param_cv^2)) else 0
-
-  # ---------------------------------------------------------------------------
-  # Prepare simulation time grid.
-  #
-  # Times are sorted and deduplicated. Extra time points are appended to allow
-  # a random temporal shift while still retaining values at the intended
-  # observed times after shifting.
-  # ---------------------------------------------------------------------------
-  all_times <- sort(unique(times))
-
-  # Default shift window: 10% of the maximum simulated time.
-  if (is.null(max_shift)) {
-    max_shift = floor(0.1 * max(all_times))
-  }
-
-  actual_times = all_times
-
-  # Extend the simulation beyond the requested times to accommodate shifting.
-  all_times = c(all_times, (max(all_times) + 1):(max(all_times) + max_shift))
-
-  # Draw one global integer shift applied to all replicates in this simulation.
-  rnd_shift = sample(-max_shift:max_shift, 1)
-
-  # Determine whether the shutoff intervention is active and falls inside
-  # the simulated time window.
-  do_perturb <- (!is.null(t_star) &&
-                   t_star > min(all_times) && t_star < max(all_times))
-
-  # Ensure t_star is present in the integration grid when needed.
-  if (do_perturb) {
-    all_times <- sort(unique(c(all_times, t_star)))
-  }
-
-  # ---------------------------------------------------------------------------
-  # Simulate each biological replicate.
-  # ---------------------------------------------------------------------------
-  for (i in seq_len(n_replicates)) {
-
-    # Apply replicate-specific biological variability to parameters
-    # via multiplicative log-normal perturbation.
-    perturbed_params <- lapply(base_params, function(param) {
-      if (sdlog > 0) param * exp(stats::rnorm(1, 0, sdlog)) else param
-    })
-
-    # Keep transcription rate R fixed across replicates by design.
-    perturbed_params$R <- base_params$R
-
-    # Store perturbed parameters.
-    parameters <- rbind(parameters, as.data.frame(c(perturbed_params, replicate = i)))
-
-    # Simulate the baseline trajectory without shutoff.
-    out1 <- deSolve::ode(y = y0, times = all_times, func = model_kinetics, parms = perturbed_params)
-    out_df <- as.data.frame(out1)
-
-    # Apply the random time shift.
-    out_df$time = out_df$time + rnd_shift
-
-    # Keep only rows corresponding to the original intended times.
-    out_df = out_df[out_df$time %in% actual_times, ]
-
-    # If the shift moves the trajectory to the right, prepend zeros so that
-    # the early time points remain represented.
-    if (rnd_shift > 0) {
-      df_zero = data.frame(
-        time = actual_times[1:rnd_shift],
-        N = rep(0, rnd_shift),
-        N_s = rep(0, rnd_shift),
-        C = rep(0, rnd_shift),
-        C_s = rep(0, rnd_shift)
+      list(
+        c(
+          dN,
+          dN_s,
+          dC,
+          dC_s
+        )
       )
-      out_df = rbind(df_zero, out_df)
     }
+  )
+}
 
-    # Initialize shutoff trajectory as the unperturbed one.
-    out_df_shutoff = out_df
 
-    # -------------------------------------------------------------------------
-    # If t_star is active, build a piecewise trajectory:
-    #   - before t_star: original parameters,
-    #   - from t_star onward: same parameters but R = 0.
-    # -------------------------------------------------------------------------
-    if (do_perturb) {
-      times_post <- all_times[all_times >= t_star]
+# =============================================================================
+# 2. Parameter ranges
+# =============================================================================
 
-      # State at the intervention time.
-      y_star <- as.numeric(out_df[out_df$time == t_star, c("N","N_s","C","C_s")])
-      names(y_star) <- c("N","N_s","C","C_s")
+r_tau_min <- 0.006
+r_tau_max <- 0.06
 
-      # Copy parameters and impose transcriptional shutoff.
-      perturbed_params_post <- perturbed_params
-      perturbed_params_post$R <- 0
+r_tau_s_min <- 0.003
+r_tau_s_max <- 0.03
 
-      # Simulate post-intervention segment starting from y_star.
-      out2 <- deSolve::ode(y = y_star, times = times_post, func = model_kinetics, parms = perturbed_params_post)
+r_alpha_min <- 0.03
+r_alpha_max <- 0.69
 
-      # Keep pre-intervention rows from the original simulation.
-      out_df_shutoff = out_df[out_df$time < t_star, ]
+r_alpha_s_min <- 0.01
+r_alpha_s_max <- 0.23
 
-      # Append post-intervention trajectory.
-      # This may include the t_star row again from the second segment.
-      out_df_shutoff <- rbind(out_df_shutoff, out2)
+r_sigma_n_min <- 0.05
+r_sigma_n_max <- 0.2
 
-      # Annotate the active value of R over time.
-      out_df_shutoff$R <- ifelse(out_df_shutoff$time >= t_star, 0, perturbed_params$R)
-    }
+r_sigma_c_min <- 0.05
+r_sigma_c_max <- 0.2
 
-    # Add replicate identifiers.
-    out_df$replicate <- i
-    out_df$R = perturbed_params$R
-    out_df_shutoff$replicate <- i
 
-    # Compute and store closed-form steady states for this replicate.
-    ssi <- steady_states(perturbed_params)
-    steady_state <- rbind(
-      steady_state,
-      data.frame(replicate = i, R = perturbed_params$R, ssi)
+# =============================================================================
+# 3. Closed-form steady state
+# =============================================================================
+
+steady_states <- function(params) {
+
+  N <-
+    params$R /
+    (
+      params$tau +
+      params$sigma_n
     )
 
-    # Append replicate data to global outputs.
-    data <- rbind(data, out_df)
-    shutoff_data <- rbind(shutoff_data, out_df_shutoff)
+  N_s <-
+    params$R *
+    params$sigma_n /
+    (
+      (
+        params$tau +
+        params$sigma_n
+      ) *
+      params$tau_s
+    )
+
+  C <-
+    params$R *
+    params$tau /
+    (
+      (
+        params$tau +
+        params$sigma_n
+      ) *
+      (
+        params$alpha +
+        params$sigma_c
+      )
+    )
+
+  C_s <-
+    (
+      params$sigma_n +
+      params$sigma_c *
+      params$tau /
+      (
+        params$sigma_c +
+        params$alpha
+      )
+    ) *
+    params$R /
+    (
+      (
+        params$tau +
+        params$sigma_n
+      ) *
+      params$alpha_s
+    )
+
+  list(
+    N = N,
+    N_s = N_s,
+    C = C,
+    C_s = C_s
+  )
+}
+
+
+# =============================================================================
+# 4. Random parameter generator
+# =============================================================================
+
+random_params <- function(
+  rtau_min = r_tau_min,
+  rtau_max = r_tau_max,
+
+  rtau_s_min = r_tau_s_min,
+  rtau_s_max = r_tau_s_max,
+
+  ralpha_min = r_alpha_min,
+  ralpha_max = r_alpha_max,
+
+  ralpha_s_min = r_alpha_s_min,
+  ralpha_s_max = r_alpha_s_max,
+
+  rsigma_n_min = r_sigma_n_min,
+  rsigma_n_max = r_sigma_n_max,
+
+  rsigma_c_min = r_sigma_c_min,
+  rsigma_c_max = r_sigma_c_max
+) {
+
+  list(
+    tau =
+      runif(
+        1,
+        rtau_min,
+        rtau_max
+      ),
+
+    tau_s =
+      runif(
+        1,
+        rtau_s_min,
+        rtau_s_max
+      ),
+
+    alpha =
+      runif(
+        1,
+        ralpha_min,
+        ralpha_max
+      ),
+
+    alpha_s =
+      runif(
+        1,
+        ralpha_s_min,
+        ralpha_s_max
+      ),
+
+    sigma_n =
+      runif(
+        1,
+        rsigma_n_min,
+        rsigma_n_max
+      ),
+
+    sigma_c =
+      runif(
+        1,
+        rsigma_c_min,
+        rsigma_c_max
+      )
+  )
+}
+
+
+# =============================================================================
+# 5. Internal helper: simulate one constant-parameter latent trajectory
+# =============================================================================
+
+simulate_latent_trajectory <- function(
+  y0,
+  times,
+  params,
+  model_kinetics = rna_kinetics
+) {
+
+  times <- sort(
+    unique(
+      as.numeric(times)
+    )
+  )
+
+  if (length(times) < 1L) {
+    stop("times must contain at least one value.")
+  }
+
+  # deSolve needs at least two output times for actual integration.
+  if (length(times) == 1L) {
+
+    out <- data.frame(
+      time = times[1],
+      N = unname(y0["N"]),
+      N_s = unname(y0["N_s"]),
+      C = unname(y0["C"]),
+      C_s = unname(y0["C_s"])
+    )
+
+    return(out)
+  }
+
+  out <- deSolve::ode(
+    y = y0,
+    times = times,
+    func = model_kinetics,
+    parms = params
+  )
+
+  as.data.frame(out)
+}
+
+
+# =============================================================================
+# 6. Helper: integrate over one interval with a fixed transcription rate
+# =============================================================================
+
+integrate_interval_fixed_R <- function(
+  y_start,
+  t_start,
+  t_end,
+  params,
+  R_interval,
+  model_kinetics = rna_kinetics
+) {
+
+  if (t_end < t_start) {
+    stop("t_end must be >= t_start.")
+  }
+
+  if (t_end == t_start) {
+    return(y_start)
+  }
+
+  p <- params
+  p$R <- R_interval
+
+  out <- deSolve::ode(
+    y = y_start,
+    times = c(t_start, t_end),
+    func = model_kinetics,
+    parms = p
+  )
+
+  y_end <- as.numeric(
+    out[
+      nrow(out),
+      c(
+        "N",
+        "N_s",
+        "C",
+        "C_s"
+      )
+    ]
+  )
+
+  names(y_end) <- c(
+    "N",
+    "N_s",
+    "C",
+    "C_s"
+  )
+
+  y_end
+}
+
+
+# =============================================================================
+# 7. Helper: scheduled transcription trajectory
+#
+# This is the core correction.
+#
+# R(t) is defined on the OBSERVED / EXPERIMENTAL time axis:
+#
+#   before onset_time:
+#       R = 0
+#
+#   onset_time <= t < t_star:
+#       R = R_pre
+#
+#   t >= t_star:
+#       R = post_R_fraction * R_pre
+#
+# If t_star is NULL, transcription remains at R_pre after onset.
+#
+# Negative onset_time is handled through a pre-run before the simulation
+# origin so that the state at time min(times) already contains RNA accumulated
+# during the earlier transcriptional history.
+# =============================================================================
+
+simulate_scheduled_trajectory <- function(
+  y0,
+  times,
+  params,
+  onset_time = 0,
+  t_star = NULL,
+  post_R_fraction = 0,
+  model_kinetics = rna_kinetics
+) {
+
+  times <- sort(
+    unique(
+      as.numeric(times)
+    )
+  )
+
+  if (length(times) < 1L) {
+    stop("times must contain at least one value.")
+  }
+
+  if (
+    length(onset_time) != 1L ||
+    !is.finite(onset_time)
+  ) {
+    stop("onset_time must be one finite number.")
+  }
+
+  if (
+    !is.null(t_star) &&
+    (
+      length(t_star) != 1L ||
+      !is.finite(t_star)
+    )
+  ) {
+    stop("t_star must be NULL or one finite number.")
+  }
+
+  if (
+    length(post_R_fraction) != 1L ||
+    !is.finite(post_R_fraction) ||
+    post_R_fraction < 0 ||
+    post_R_fraction > 1
+  ) {
+    stop("post_R_fraction must be in [0,1].")
+  }
+
+  if (
+    is.null(params$R) ||
+    length(params$R) != 1L ||
+    !is.finite(params$R)
+  ) {
+    stop("params$R must be one finite transcription rate.")
+  }
+
+  t_min <- min(times)
+  t_max <- max(times)
+
+  R_pre <- params$R
+  R_post <- post_R_fraction * R_pre
+
+  # ---------------------------------------------------------------------------
+  # Earlier-than-origin onset:
+  #
+  # If onset_time < t_min, accumulate a pre-history from onset_time to t_min
+  # with normal transcription. This changes the state at the beginning of the
+  # observable simulation without changing t_star.
+  # ---------------------------------------------------------------------------
+
+  y_start <- y0
+
+  if (onset_time < t_min) {
+
+    # If the intervention itself happened before t_min, the pre-run must be
+    # split at t_star. This is uncommon in the intended benchmark but handled
+    # correctly for completeness.
+    if (
+      !is.null(t_star) &&
+      t_star > onset_time &&
+      t_star < t_min
+    ) {
+
+      y_at_star <- integrate_interval_fixed_R(
+        y_start = y_start,
+        t_start = onset_time,
+        t_end = t_star,
+        params = params,
+        R_interval = R_pre,
+        model_kinetics = model_kinetics
+      )
+
+      y_start <- integrate_interval_fixed_R(
+        y_start = y_at_star,
+        t_start = t_star,
+        t_end = t_min,
+        params = params,
+        R_interval = R_post,
+        model_kinetics = model_kinetics
+      )
+
+    } else {
+
+      R_pre_history <- if (
+        !is.null(t_star) &&
+        t_min >= t_star
+      ) {
+        R_post
+      } else {
+        R_pre
+      }
+
+      y_start <- integrate_interval_fixed_R(
+        y_start = y_start,
+        t_start = onset_time,
+        t_end = t_min,
+        params = params,
+        R_interval = R_pre_history,
+        model_kinetics = model_kinetics
+      )
+    }
   }
 
   # ---------------------------------------------------------------------------
-  # Extract sampled observations at selected time points.
+  # Breakpoints include every requested time plus all rate-change times that
+  # fall inside the observable simulation interval.
   # ---------------------------------------------------------------------------
-  df_tsampled = subset(data, time %in% stimes)
-  df_shutoff_tsampled = subset(shutoff_data, time %in% shutofftimes)
 
-  # Return all outputs in a structured list.
+  breakpoints <- times
+
+  if (
+    onset_time > t_min &&
+    onset_time < t_max
+  ) {
+    breakpoints <- c(
+      breakpoints,
+      onset_time
+    )
+  }
+
+  if (
+    !is.null(t_star) &&
+    t_star > t_min &&
+    t_star < t_max
+  ) {
+    breakpoints <- c(
+      breakpoints,
+      t_star
+    )
+  }
+
+  breakpoints <- sort(
+    unique(
+      breakpoints
+    )
+  )
+
+  # If a requested grid does not start at t_min after sorting, this should
+  # never happen, but retain an explicit guard.
+  if (breakpoints[1] != t_min) {
+    breakpoints <- sort(
+      unique(
+        c(
+          t_min,
+          breakpoints
+        )
+      )
+    )
+  }
+
+  states <- matrix(
+    NA_real_,
+    nrow = length(breakpoints),
+    ncol = 4L
+  )
+
+  colnames(states) <- c(
+    "N",
+    "N_s",
+    "C",
+    "C_s"
+  )
+
+  states[1, ] <- y_start
+
+  current_y <- y_start
+
+  # ---------------------------------------------------------------------------
+  # Integrate each interval with the correct constant R.
+  #
+  # Rate is evaluated at the interval midpoint; because onset_time and t_star
+  # are inserted as explicit breakpoints, no interval can cross a rate change.
+  # ---------------------------------------------------------------------------
+
+  if (length(breakpoints) >= 2L) {
+
+    for (
+      ii in 2:length(breakpoints)
+    ) {
+
+      t_left <- breakpoints[ii - 1L]
+      t_right <- breakpoints[ii]
+      t_mid <- (t_left + t_right) / 2
+
+      R_interval <- if (
+        t_mid < onset_time
+      ) {
+
+        0
+
+      } else if (
+        !is.null(t_star) &&
+        t_mid >= t_star
+      ) {
+
+        R_post
+
+      } else {
+
+        R_pre
+      }
+
+      current_y <- integrate_interval_fixed_R(
+        y_start = current_y,
+        t_start = t_left,
+        t_end = t_right,
+        params = params,
+        R_interval = R_interval,
+        model_kinetics = model_kinetics
+      )
+
+      states[ii, ] <- current_y
+    }
+  }
+
+  out <- data.frame(
+    time = breakpoints,
+    N = states[, "N"],
+    N_s = states[, "N_s"],
+    C = states[, "C"],
+    C_s = states[, "C_s"]
+  )
+
+  # Right-continuous transcription metadata:
+  # at t == onset_time transcription is ON;
+  # at t == t_star the intervention is already active.
+  out$R <- ifelse(
+    out$time < onset_time,
+    0,
+    R_pre
+  )
+
+  if (!is.null(t_star)) {
+    out$R[
+      out$time >= t_star
+    ] <- R_post
+  }
+
+  # Return only originally requested times.
+  out <- out[
+    out$time %in% times,
+    ,
+    drop = FALSE
+  ]
+
+  rownames(out) <- NULL
+
+  out
+}
+
+
+# =============================================================================
+# 8. Backward-compatible intervention helper
+#
+# No onset heterogeneity is introduced here. This function now correctly
+# handles t_star == min(times), which means the intervention is active from
+# the first observed time onward.
+# =============================================================================
+
+simulate_piecewise_trajectory <- function(
+  y0,
+  times,
+  params,
+  t_star = NULL,
+  post_R_fraction = 0,
+  model_kinetics = rna_kinetics
+) {
+
+  simulate_scheduled_trajectory(
+    y0 = y0,
+    times = times,
+    params = params,
+    onset_time = min(
+      as.numeric(times)
+    ),
+    t_star = t_star,
+    post_R_fraction = post_R_fraction,
+    model_kinetics = model_kinetics
+  )
+}
+
+
+# =============================================================================
+# 9. Legacy observational time-shift helper
+#
+# RETAINED ONLY FOR REPRODUCING OLD SIMULATIONS.
+# generate_ODE_states() below DOES NOT use this helper.
+# =============================================================================
+
+apply_observation_shift <- function(
+  latent_df,
+  actual_times,
+  shift
+) {
+
+  latent_df <- as.data.frame(
+    latent_df
+  )
+
+  actual_times <- sort(
+    unique(
+      as.numeric(
+        actual_times
+      )
+    )
+  )
+
+  lookup_times <-
+    actual_times -
+    shift
+
+  out <- data.frame(
+    time = actual_times,
+    N = 0,
+    N_s = 0,
+    C = 0,
+    C_s = 0
+  )
+
+  for (
+    ii in seq_along(
+      actual_times
+    )
+  ) {
+
+    tt <- lookup_times[ii]
+
+    if (
+      tt <
+      min(
+        latent_df$time
+      )
+    ) {
+      next
+    }
+
+    jj <- match(
+      tt,
+      latent_df$time
+    )
+
+    if (is.na(jj)) {
+      stop(
+        paste(
+          "Requested latent time",
+          tt,
+          "is missing from simulation grid."
+        )
+      )
+    }
+
+    out[
+      ii,
+      c(
+        "N",
+        "N_s",
+        "C",
+        "C_s"
+      )
+    ] <-
+      latent_df[
+        jj,
+        c(
+          "N",
+          "N_s",
+          "C",
+          "C_s"
+        )
+      ]
+  }
+
+  out
+}
+
+
+# =============================================================================
+# 10. Main replicate-level simulation
+# =============================================================================
+
+generate_ODE_states <- function(
+  base_params,
+  y0,
+  times,
+
+  n_replicates = 3,
+
+  model_kinetics = rna_kinetics,
+
+  param_cv = 0.05,
+
+  stimes = c(
+    10,
+    40,
+    50,
+    100
+  ),
+
+  shutofftimes = c(
+    10,
+    40,
+    50,
+    100
+  ),
+
+  max_shift = NULL,
+
+  t_star = NULL,
+
+  post_R_fraction = 0,
+
+  # ---------------------------------------------------------------------------
+  # Backward-compatible name.
+  #
+  # IMPORTANT:
+  #   This now controls GENE-SPECIFIC TRANSCRIPTION-ONSET heterogeneity.
+  #   It no longer shifts the observed intervention trajectory.
+  # ---------------------------------------------------------------------------
+  use_time_shift = TRUE,
+
+  # Preferred explicit name. If non-NULL, overrides use_time_shift.
+  use_onset_shift = NULL,
+
+  # Nominal transcription onset on the simulation time axis.
+  nominal_onset_time = 0
+) {
+
+
+  # ---------------------------------------------------------------------------
+  # Validation
+  # ---------------------------------------------------------------------------
+
+  if (
+    length(post_R_fraction) != 1L ||
+    !is.finite(post_R_fraction) ||
+    post_R_fraction < 0 ||
+    post_R_fraction > 1
+  ) {
+    stop(
+      "post_R_fraction must be in [0,1]."
+    )
+  }
+
+  if (
+    length(n_replicates) != 1L ||
+    !is.finite(n_replicates) ||
+    n_replicates < 1L
+  ) {
+    stop(
+      "n_replicates must be >= 1."
+    )
+  }
+
+  if (
+    length(nominal_onset_time) != 1L ||
+    !is.finite(nominal_onset_time)
+  ) {
+    stop(
+      "nominal_onset_time must be one finite number."
+    )
+  }
+
+  actual_times <- sort(
+    unique(
+      as.numeric(
+        times
+      )
+    )
+  )
+
+  if (
+    length(actual_times) < 2L
+  ) {
+    stop(
+      "At least two simulation time points are required."
+    )
+  }
+
+  if (
+    !is.null(t_star) &&
+    (
+      length(t_star) != 1L ||
+      !is.finite(t_star)
+    )
+  ) {
+    stop(
+      "t_star must be NULL or one finite number."
+    )
+  }
+
+
+  # ---------------------------------------------------------------------------
+  # Biological-variability scale.
+  # ---------------------------------------------------------------------------
+
+  sdlog <- if (
+    param_cv > 0
+  ) {
+
+    sqrt(
+      log(
+        1 +
+        param_cv^2
+      )
+    )
+
+  } else {
+
+    0
+  }
+
+
+  # ---------------------------------------------------------------------------
+  # Onset-shift semantics.
+  # ---------------------------------------------------------------------------
+
+  shift_enabled <- if (
+    is.null(
+      use_onset_shift
+    )
+  ) {
+    isTRUE(
+      use_time_shift
+    )
+  } else {
+    isTRUE(
+      use_onset_shift
+    )
+  }
+
+  if (
+    is.null(max_shift)
+  ) {
+
+    max_shift <- floor(
+      0.1 *
+      max(
+        actual_times
+      )
+    )
+  }
+
+  if (
+    length(max_shift) != 1L ||
+    !is.finite(max_shift) ||
+    max_shift < 0
+  ) {
+    stop(
+      "max_shift must be one finite value >= 0."
+    )
+  }
+
+  max_shift <- as.integer(
+    floor(
+      max_shift
+    )
+  )
+
+  onset_shift <- if (
+    shift_enabled &&
+    max_shift > 0L
+  ) {
+
+    sample(
+      -max_shift:max_shift,
+      1
+    )
+
+  } else {
+
+    0L
+  }
+
+  onset_time <-
+    nominal_onset_time +
+    onset_shift
+
+
+  # ---------------------------------------------------------------------------
+  # The actual output grid is NOT shifted.
+  #
+  # Add requested sampling times and t_star to the integration grid so that
+  # all requested output times and intervention boundaries are represented
+  # exactly.
+  # ---------------------------------------------------------------------------
+
+  simulation_times <- sort(
+    unique(
+      c(
+        actual_times,
+        stimes,
+        shutofftimes,
+        if (
+          !is.null(
+            t_star
+          )
+        ) {
+          t_star
+        } else {
+          numeric()
+        }
+      )
+    )
+  )
+
+  # Only integrate across the requested simulation interval.
+  simulation_times <- simulation_times[
+    simulation_times >=
+      min(
+        actual_times
+      ) &
+    simulation_times <=
+      max(
+        actual_times
+      )
+  ]
+
+  simulation_times <- sort(
+    unique(
+      c(
+        min(
+          actual_times
+        ),
+        simulation_times,
+        max(
+          actual_times
+        )
+      )
+    )
+  )
+
+
+  # ---------------------------------------------------------------------------
+  # Containers.
+  # ---------------------------------------------------------------------------
+
+  data_list <- vector(
+    "list",
+    n_replicates
+  )
+
+  intervention_list <- vector(
+    "list",
+    n_replicates
+  )
+
+  parameters_list <- vector(
+    "list",
+    n_replicates
+  )
+
+  steady_state_list <- vector(
+    "list",
+    n_replicates
+  )
+
+
+  # ===========================================================================
+  # Replicate loop
+  # ===========================================================================
+
+  for (
+    i in seq_len(
+      n_replicates
+    )
+  ) {
+
+
+    # -------------------------------------------------------------------------
+    # Biological parameter variation.
+    # -------------------------------------------------------------------------
+
+    perturbed_params <- lapply(
+      base_params,
+      function(param) {
+
+        if (
+          sdlog > 0
+        ) {
+
+          param *
+          exp(
+            stats::rnorm(
+              1,
+              0,
+              sdlog
+            )
+          )
+
+        } else {
+
+          param
+        }
+      }
+    )
+
+
+    # Keep transcription rate fixed across replicates, as in the old code.
+    perturbed_params$R <-
+      base_params$R
+
+
+    # -------------------------------------------------------------------------
+    # Parameter bookkeeping.
+    # -------------------------------------------------------------------------
+
+    parameters_list[[i]] <-
+      as.data.frame(
+        c(
+          perturbed_params,
+          replicate = i
+        )
+      )
+
+
+    # -------------------------------------------------------------------------
+    # A. Baseline / continuous-transcription trajectory.
+    #
+    # Uses the SAME gene-specific onset_time as the intervention trajectory.
+    # No post-hoc observation shift is applied.
+    # -------------------------------------------------------------------------
+
+    observed_none <- simulate_scheduled_trajectory(
+      y0 = y0,
+      times = simulation_times,
+      params = perturbed_params,
+      onset_time = onset_time,
+      t_star = NULL,
+      post_R_fraction = 1,
+      model_kinetics = model_kinetics
+    )
+
+
+    # -------------------------------------------------------------------------
+    # B. Intervention trajectory.
+    #
+    # SAME pre-shutoff onset history as baseline.
+    # The intervention ALWAYS occurs at the common t_star.
+    # -------------------------------------------------------------------------
+
+    observed_intervention <- simulate_scheduled_trajectory(
+      y0 = y0,
+      times = simulation_times,
+      params = perturbed_params,
+      onset_time = onset_time,
+      t_star = t_star,
+      post_R_fraction = post_R_fraction,
+      model_kinetics = model_kinetics
+    )
+
+
+    # -------------------------------------------------------------------------
+    # Replicate identifiers.
+    # -------------------------------------------------------------------------
+
+    observed_none$replicate <- i
+
+    observed_intervention$replicate <- i
+
+
+    # -------------------------------------------------------------------------
+    # Steady state before intervention.
+    # -------------------------------------------------------------------------
+
+    ssi <- steady_states(
+      perturbed_params
+    )
+
+
+    steady_state_list[[i]] <-
+      data.frame(
+        replicate = i,
+        R = perturbed_params$R,
+        N = ssi$N,
+        N_s = ssi$N_s,
+        C = ssi$C,
+        C_s = ssi$C_s
+      )
+
+
+    # -------------------------------------------------------------------------
+    # Store.
+    # -------------------------------------------------------------------------
+
+    data_list[[i]] <-
+      observed_none
+
+    intervention_list[[i]] <-
+      observed_intervention
+  }
+
+
+  # =============================================================================
+  # 11. Combine replicates
+  # =============================================================================
+
+  data <- do.call(
+    rbind,
+    data_list
+  )
+
+  intervention_data <- do.call(
+    rbind,
+    intervention_list
+  )
+
+  parameters <- do.call(
+    rbind,
+    parameters_list
+  )
+
+  steady_state <- do.call(
+    rbind,
+    steady_state_list
+  )
+
+  rownames(data) <- NULL
+  rownames(intervention_data) <- NULL
+  rownames(parameters) <- NULL
+  rownames(steady_state) <- NULL
+
+
+  # =============================================================================
+  # 12. Sample requested observation times
+  # =============================================================================
+
+  df_tsampled <- data[
+    data$time %in%
+      stimes,
+    ,
+    drop = FALSE
+  ]
+
+  df_intervention_tsampled <-
+    intervention_data[
+      intervention_data$time %in%
+        shutofftimes,
+      ,
+      drop = FALSE
+    ]
+
+
+  # =============================================================================
+  # 13. Return
+  # =============================================================================
+
   list(
-    data = data,
-    shutoff_data = shutoff_data,
-    tsampled_data = df_tsampled,
-    shutoff_tsampled_data = df_shutoff_tsampled,
-    ss_data = steady_state,
-    time_shift = rnd_shift,
-    parameters = parameters
+
+    # Original names retained for backward compatibility.
+    data =
+      data,
+
+    shutoff_data =
+      intervention_data,
+
+    tsampled_data =
+      df_tsampled,
+
+    shutoff_tsampled_data =
+      df_intervention_tsampled,
+
+
+    # Clearer aliases.
+    intervention_data =
+      intervention_data,
+
+    intervention_tsampled_data =
+      df_intervention_tsampled,
+
+
+    ss_data =
+      steady_state,
+
+    # Backward-compatible alias.
+    time_shift =
+      onset_shift,
+
+    # Preferred explicit metadata.
+    onset_shift =
+      onset_shift,
+
+    onset_time =
+      onset_time,
+
+    nominal_onset_time =
+      nominal_onset_time,
+
+    use_onset_shift =
+      shift_enabled,
+
+    parameters =
+      parameters,
+
+    post_R_fraction =
+      post_R_fraction,
+
+    t_star =
+      t_star
   )
 }

@@ -1,0 +1,5 @@
+dataset_final	N_tested	N_p_lt_005	N_q_lt_010	N_q_lt_005	N_unique_genes	N_unique_events
+Kc167	337	16	0	0	286	337
+K562	2696	121	0	0	1635	2696
+NIH-3T3	1746	79	0	0	1288	1746
+mESC	1972	179	28	14	1302	1972

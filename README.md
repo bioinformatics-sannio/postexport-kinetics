@@ -1,38 +1,45 @@
-## Post-export RNA kinetic  
+# Post-export RNA kinetics
 
-Compartment-resolved kinetic inference and **nested hypothesis testing** for detecting **post-export RNA processing** from time-resolved nuclear/cytoplasmic transcriptomic data.
+Compartment-resolved kinetic modeling and constrained nested-model
+comparison for identifying RNA trajectories consistent with an additional
+post-export conversion component.
 
-This repository contains the R implementation of the modeling and inference framework described in:
+This repository contains the analysis and reproducibility code associated with:
 
-> Faretra L., Napolitano F., Pancione M., Cerulo L. (2026). *A kinetic modeling framework to detect post-export RNA processing from time-resolved transcriptomic data.* Submitted manuscript.
+> Faretra L., Napolitano F., Pancione M., Cerulo L. (2026).
+> *Kinetic model comparison identifies RNA trajectories consistent with
+> post-export processing.*
+> Revised manuscript submitted to Bioinformatics.
 
----
+## Scientific scope
 
-### Overview
+The framework models four compartment-resolved RNA states:
 
-Many transcriptomic analyses assume that RNA processing (e.g., splicing) occurs exclusively in the nucleus. However, increasing evidence suggests that **RNA processing and remodeling may continue after nuclear export**.
+- `N(t)`: nuclear unprocessed RNA
+- `Ns(t)`: nuclear processed RNA
+- `C(t)`: cytoplasmic unprocessed RNA
+- `Cs(t)`: cytoplasmic processed RNA
 
-This repository basically provides scripts to reproduce results reported in the manuscript. Specifically it provides:
+The parameter `sigma_c` represents a phenomenological post-export conversion
+rate from `C` to `Cs`.
 
-- A **mechanistic ODE-based model** of RNA kinetics  
-- A **cytoplasmic processing ($\sigma_c$) nested hypothesis testing framework**  with variance shrinkage for stability, weighted regression (heteroskedastic noise), non-negativity constraints (NNLS), and bootstrap-based inference due to boundary parameters.
-- **Synthetic** and **real** datasets used to test the framework.
+Importantly, a positive estimate or statistically supported `sigma_c` does
+not by itself identify the underlying biochemical mechanism and should not be
+interpreted as direct evidence of cytoplasmic splicing.
 
----
+Inference is formulated as a constrained nested-model comparison between:
 
-### Model inputs
+- null model: `sigma_c = 0`
+- full model: `sigma_c >= 0`
 
-The method operates on time-resolved measurements of four RNA pools:
+with the scientific one-sided alternative corresponding to `sigma_c > 0`.
 
-- $N(t)$: nuclear *unprocessed* RNA  
-- $N_s(t)$: nuclear *processed* RNA  
-- $C(t)$: cytoplasmic *unprocessed* RNA  
-- $C_s(t)$: cytoplasmic *processed* RNA  
+Statistical significance is assessed using a replicate-level generative
+bootstrap with covariance propagation, reconstruction of the
+observation-derived design matrix, non-negativity constraints, and an add-one
+bootstrap p-value correction.
 
-The model estimates kinetic parameters and compares:
 
-- **Null model**: no cytoplasmic processing  
-- **Alternative model**: includes cytoplasmic processing ($\sigma_c$)
 
 ---
 
