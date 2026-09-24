@@ -272,3 +272,12 @@ Raw-read preprocessing requires recent versions of:
 - RSEM
 
 Dataset-specific assumptions are documented in the preprocessing workflows and in the manuscript Supplementary Methods.
+
+## Archival release
+
+The frozen analysis accompanying the revised manuscript is permanently
+archived on Zenodo:
+
+[![DOI](https://zenodo.org/badge/1164026399.svg)](https://doi.org/10.5281/zenodo.22944109)
+
+**DOI:** https://doi.org/10.5281/zenodo.22944109
