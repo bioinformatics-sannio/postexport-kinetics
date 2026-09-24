@@ -1,123 +1,274 @@
 # Post-export RNA kinetics
 
-Compartment-resolved kinetic modeling and constrained nested-model
-comparison for identifying RNA trajectories consistent with an additional
-post-export conversion component.
+Compartment-resolved kinetic modeling and constrained nested-model comparison for identifying RNA trajectories consistent with an additional post-export conversion component.
 
 This repository contains the analysis and reproducibility code associated with:
 
-> Faretra L., Napolitano F., Pancione M., Cerulo L. (2026).
-> *Kinetic model comparison identifies RNA trajectories consistent with
-> post-export processing.*
-> Revised manuscript submitted to Bioinformatics.
+> Faretra L., Napolitano F., Pancione M., Cerulo L. (2026). *Kinetic model comparison identifies RNA trajectories consistent with post-export processing.* Revised manuscript submitted to **Bioinformatics** (Manuscript BIOINF-2026-0699).
 
 ## Scientific scope
 
-The framework models four compartment-resolved RNA states:
+The framework models four compartment-resolved RNA states: `N(t)` (nuclear unprocessed), `N_s(t)` (nuclear processed), `C(t)` (cytoplasmic unprocessed), and `C_s(t)` (cytoplasmic processed).
 
-- `N(t)`: nuclear unprocessed RNA
-- `Ns(t)`: nuclear processed RNA
-- `C(t)`: cytoplasmic unprocessed RNA
-- `Cs(t)`: cytoplasmic processed RNA
+The parameter `sigma_c` is a phenomenological post-export conversion rate from `C` to `C_s`. A positive or statistically supported `sigma_c` does **not** by itself identify a biochemical mechanism and should not be interpreted as direct evidence of cytoplasmic splicing.
 
-The parameter `sigma_c` represents a phenomenological post-export conversion
-rate from `C` to `Cs`.
+Inference compares a null model (`sigma_c = 0`) with a full constrained model (`sigma_c >= 0`), with scientific one-sided alternative `sigma_c > 0`. Significance is assessed by a replicate-level generative bootstrap with covariance propagation, reconstruction of observation-derived quantities, non-negativity constraints, explicit boundary handling, and an add-one p-value correction.
 
-Importantly, a positive estimate or statistically supported `sigma_c` does
-not by itself identify the underlying biochemical mechanism and should not be
-interpreted as direct evidence of cytoplasmic splicing.
+## Reproducibility note
 
-Inference is formulated as a constrained nested-model comparison between:
+This repository contains historical development scripts as well as the finalized revised-manuscript analysis. Only the scripts listed under **Final manuscript pipeline** define the authoritative analysis path.
 
-- null model: `sigma_c = 0`
-- full model: `sigma_c >= 0`
+Frozen manuscript tag:
 
-with the scientific one-sided alternative corresponding to `sigma_c > 0`.
+`manuscript-revision-v1.0`
 
-Statistical significance is assessed using a replicate-level generative
-bootstrap with covariance propagation, reconstruction of the
-observation-derived design matrix, non-negativity constraints, and an add-one
-bootstrap p-value correction.
+A reusable R package is developed separately as `postexportKinetics`.
 
+## Final manuscript pipeline
 
+### Core inference
+- `commons/nested_test2.r`
+- `ode_model/ode.r`
 
----
+### Corrected synthetic benchmark
+1. `synthetic_dataset/gen_synthetic_ODE_states_corrected_onset.R`
+2. `synthetic_dataset/run_benchmark_main_corrected_onset_revision.R`
+3. `synthetic_dataset/analyze_benchmark_corrected_onset_final.R`
 
-### Required packages
+The corrected factorial benchmark contains 1,152 experimental configurations and uses 1,999 generative-bootstrap replicates per test.
 
-Required packages can be installe as follows
+### Pseudo-shutoff and model misspecification
+- `synthetic_dataset/run_benchmark_pseudoshutoff_revision.R`
+- `synthetic_dataset/run_pseudoshutoff_misspecification_benchmark.R`
+- `synthetic_dataset/run_fraction_separation_robustness_benchmark.R`
+- `synthetic_dataset/make_FigS_pseudoshutoff_minimal.R`
+- `synthetic_dataset/make_FigS_fraction_misspecification.R`
 
-```r
-install.packages(c(
-  "data.table","deSolve","nnls","MASS","parallel",
-  "ggplot2","patchwork","scales","plotROC","pROC","PRROC",
-  "biomaRt","AnnotationDbi","clusterProfiler","ReactomePA","enrichplot",
-  "openxlsx","knitr","tidyr","readr"
-))
+### Practical identifiability and numerical validation
+- `synthetic_dataset/analyze_practical_identifiability.R`
+- `synthetic_dataset/make_FigS_two_representative_synthetic_refits_FINAL.R`
+- `synthetic_dataset/analyze_CN_vs_exact_transition.R`
 
-if (!requireNamespace("BiocManager", quietly = TRUE))
-  install.packages("BiocManager")
+### Comparator and ranking analyses
+- `synthetic_dataset/run_cytoplasmic_only_baseline.R`
+- `synthetic_dataset/make_FigS_full_vs_cytoplasmic_only_typeI.R`
+- `synthetic_dataset/analyze_three_way_AUPR.R`
+- `synthetic_dataset/analyze_composite_score_ablation.R`
+- `synthetic_dataset/regenerate_corrected_discrimination_figures.R`
 
-BiocManager::install(c(
-  "org.Hs.eg.db","org.Mm.eg.db","org.Dm.eg.db"
-))
+The composite score is an exploratory prioritization summary, not an inferential statistic or an optimized ranking rule.
+
+### mESC matched-design sensitivity
+- `synthetic_dataset/run_GSE256335_matched_corrected_onset_benchmark.R`
+- `synthetic_dataset/analyze_GSE256335_effect_size_power.R`
+
+### Real-data analysis
+- `real_datasets/run_real_datasets_revision.R`
+- `real_datasets/run_mESC_20k.R`
+- `real_datasets/audit_final_real_data.R`
+- `real_datasets/fig_representative_Ppp1r36dn_Nsd1_common_y0_FINAL.R`
+- `real_datasets/make_FigS19_realdata_QQ_final.R`
+- `real_datasets/make_S5testresults_final.py`
+
+Final Supplementary Table S5:
+- `real_datasets/S5testresults_final.xlsx`
+
+## Final real-data audit
+
+Benjamini-Hochberg correction is performed separately within each dataset.
+
+| Dataset | Tested RI events | Unique genes | p < 0.05 | q < 0.10 | q < 0.05 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Kc167 | 337 | 286 | 16 | 0 | 0 |
+| K562 | 2696 | 1635 | 121 | 0 | 0 |
+| NIH-3T3 | 1746 | 1288 | 79 | 0 | 0 |
+| mESC | 1972 | 1302 | 179 | 28 | 14 |
+
+The mESC pharmacological-shutoff analysis contains FDR-supported events. The three pseudo-shutoff datasets are interpreted as exploratory rankings rather than FDR-controlled discoveries.
+
+Machine-readable audit summaries are under `real_datasets/final_real_data_audit/`.
+
+## Real datasets
+
+| Dataset | System | Design |
+| --- | --- | --- |
+| GSE83620 | Drosophila Kc167 | pseudo-shutoff |
+| GSE207924 | human K562 | pseudo-shutoff |
+| GSE207924 | mouse NIH-3T3 | pseudo-shutoff |
+| GSE256335 | mouse embryonic stem cells | pharmacological shutoff |
+
+GSE256335 uses pharmacological transcriptional inhibition. GSE83620 and GSE207924 use metabolic-labeling-based pseudo-shutoff constructions and are not treated as equivalent to direct inhibition.
+
+## RNA-seq preprocessing
+
+Retained-intron events are quantified with rMATS and nuclear/cytoplasmic inclusion and skipping measurements are converted to the four kinetic states. Dataset-specific preprocessing and processed event-level inputs are retained where required for manuscript reproduction. Raw public sequencing data are not duplicated here.
+
+Raw-read workflows use standard tools including SRA Toolkit, cutadapt, STAR, samtools, rMATS, fastp, and RSEM. Large genomes, transcriptomes, FASTQ/BAM files, third-party installations, checkpoints, and temporary intermediates are intentionally excluded.
+
+## Software dependencies
+
+Analyses use CRAN packages including `data.table`, `deSolve`, `nnls`, `MASS`, `parallel`, `ggplot2`, `patchwork`, `scales`, `pROC`, `PRROC`, `openxlsx`, `knitr`, `tidyr`, and `readr`, plus Bioconductor annotation/enrichment packages including `biomaRt`, `AnnotationDbi`, `clusterProfiler`, `ReactomePA`, `enrichplot`, `org.Hs.eg.db`, `org.Mm.eg.db`, and `org.Dm.eg.db`.
+
+Not every dependency is required for every analysis. Final computational runs record session information where available.
+
+## Repository organization
+
+- `commons/`: statistical inference and shared utilities.
+- `ode_model/`: ODE definitions and simulation utilities.
+- `synthetic_dataset/`: synthetic generation, benchmarking, robustness, comparators, identifiability, and figures.
+- `real_datasets/`: preprocessing, final real-data inference, audits, and supplementary outputs.
+
+## Detailed real-data preprocessing
+
+The public RNA-seq datasets are processed from raw sequencing data to event-level retained-intron measurements and then converted into the four kinetic states required by the model. Raw FASTQ files are not redistributed in this repository.
+
+### GSE256335 — mouse embryonic stem cells
+
+Reads were aligned to the mouse reference genome with STAR (v2.7) in two-pass mode. Alignment allowed a maximum of three mismatches per read, end-to-end alignment, and a maximum intron length of 299,999 bp. Retained-intron events were quantified with rMATS. Event-level counts were corrected for effective isoform length; sample-specific normalization used total-expression estimates from RSEM, with nuclear/cytoplasmic recovery scaling as described in the manuscript and Supplementary Methods.
+
+This dataset uses direct pharmacological transcriptional inhibition and is analyzed separately from the pseudo-shutoff datasets.
+
+### GSE207924 — human K562 and mouse NIH-3T3
+
+Adapter and low-quality sequence removal used cutadapt. Reads were aligned with STAR to the appropriate host/spike-in reference and filtered with samtools. Retained-intron events were quantified with rMATS. Event-level measurements were combined with gene-level metabolic-labeling information to reconstruct the pre-existing RNA component used as a pseudo-shutoff approximation.
+
+Because labeling fractions are estimated at gene level whereas retained-intron measurements are event-specific, this reconstruction is treated as an approximation rather than as equivalent to pharmacological shutoff.
+
+### GSE83620 — Drosophila Kc167
+
+Initial quality control and adapter trimming used fastp, including poly-G tail removal. Reads were aligned to the Drosophila reference genome and to the Saccharomyces cerevisiae spike-in reference used for normalization. Retained-intron events were quantified with rMATS. The experimentally isolated unlabeled/pre-existing RNA fraction is used as the pseudo-shutoff measurement.
+
+### rMATS quantification and kinetic states
+
+rMATS v4.1 was used for retained-intron quantification, with paired-end configuration for GSE207924 and GSE256335 and single-end configuration for GSE83620, with variable read lengths supported as appropriate.
+
+Nuclear/cytoplasmic inclusion and skipping measurements are transformed into:
+
+- nuclear inclusion -> `N`
+- nuclear skipping -> `N_s`
+- cytoplasmic inclusion -> `C`
+- cytoplasmic skipping -> `C_s`
+
+Raw event counts are adjusted for effective isoform length. GSE207924 and GSE83620 use exogenous spike-in information for normalization. GSE256335 uses sample-specific total-expression information from RSEM together with compartment-recovery scaling. The manuscript and Supplementary Methods remain the authoritative description of preprocessing assumptions.
+
+## Reproducibility workflow
+
+The repository supports two levels of reproduction.
+
+### Level 1 — inference from processed event-level inputs
+
+This is the recommended route for reproducing the statistical results without repeating raw-read alignment and rMATS quantification.
+
+```text
+processed event-level measurements
+        |
+        v
+construction of N, N_s, C, C_s
+        |
+        +--> real_datasets/run_real_datasets_revision.R
+        |       |
+        |       +--> Kc167 / K562 / NIH-3T3 final results
+        |
+        +--> real_datasets/run_mESC_20k.R
+                |
+                +--> final mESC results
+        |
+        v
+real_datasets/audit_final_real_data.R
+        |
+        +--> final dataset counts
+        +--> FDR-supported mESC events
+        +--> boundary summaries
+        +--> representative-event audit
+        |
+        +--> real_datasets/make_FigS19_realdata_QQ_final.R
+        +--> real_datasets/fig_representative_Ppp1r36dn_Nsd1_common_y0_FINAL.R
+        +--> real_datasets/make_S5testresults_final.py
 ```
 
-### Repository organization
+Final machine-readable audit summaries provide lightweight reference outputs against which a reproduced analysis can be checked.
 
-The repository is organized into four main directories:
+### Level 2 — processed inputs from public sequencing data
 
-- `commons/` utility functions shared across the project for: data handling ,plotting utilities, and general helper functions.
+Raw sequencing data can be retrieved from the original public accessions. Dataset-specific preprocessing workflows document alignment, retained-intron quantification, normalization, and construction of the model states.
 
-- `ode_model/` core implementation of the kinetic model: ODE system definition ,parameter estimation, nested hypothesis testing, model fitting routines.
+This route additionally requires the appropriate genome/transcriptome references and external command-line tools. Large references, indexes, FASTQ/BAM files, and third-party installations are intentionally not version-controlled.
 
-- `real_datasets/` scripts to reproduce results on **real datasets**. Each dataset (GSE) has its own subdirectory. Inside each GSE directory a script `gen_RMATS_table.r` generates **time-course RNA states** starting from **rMATS outputs** (.csv provided in each directory).
+## Synthetic benchmark reproducibility
 
-- `synthetic_dataset/` scripts for **simulation and benchmarking** on synthetic data.
+The corrected benchmark follows:
 
-### Synthetic data
+```text
+ode_model/ode.r
+        |
+        v
+synthetic_dataset/gen_synthetic_ODE_states_corrected_onset.R
+        |
+        v
+synthetic_dataset/run_benchmark_main_corrected_onset_revision.R
+        |
+        v
+synthetic_dataset/analyze_benchmark_corrected_onset_final.R
+```
 
-Synthetic data must be generated first with `gen_synthetic_ODE_states.r`. The script generates synthetic RNA time-course data from the ODE model. Generation parameters can be set in the header of the script.
+The complete benchmark evaluates 1,152 configurations with 1,999 generative-bootstrap replicates per test and is intended for parallel Linux/HPC execution. Small final summaries, run metadata, and session information are included so that key manuscript results can be checked without distributing all large intermediate benchmark objects.
 
-The test (nested and PSI) can then be executed with `run_tests.r`. The script runs the nested tests on synthetic data. The execution can be performed in parallel using the parallel R package.
+## Reference outputs for verification
 
-Figures and tables reported in the paper can be obtained with `fig_pr_roc.r`, which generates Precision-Recall and ROC curves, and `fig_calibration_power.r`, which generates calibration and statistical power plots.
+A successful reproduction of the final real-data audit should recover:
 
-### Real data
+| Dataset | Tested RI events | Unique genes | p < 0.05 | q < 0.10 | q < 0.05 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Kc167 | 337 | 286 | 16 | 0 | 0 |
+| K562 | 2696 | 1635 | 121 | 0 | 0 |
+| NIH-3T3 | 1746 | 1288 | 79 | 0 | 0 |
+| mESC | 1972 | 1302 | 179 | 28 | 14 |
 
-Real datasets are derived from RNA-seq experiments, deposited by the respective studies. Raw FASTQ reads are aligned to the reference genomes using STAR (v2.7) and processed according to authors directives. The aligned reads then analyzed with rMATS to obtain event-level counts for inclusion/skipping isoforms across compartments and time points. The rMATS outputs are then converted into time-resolved abundance estimates of the four RNA species required by the ODE model. For convenience, in each GSE directory the processed rMATS outputs are already provided as .csv files.
+Final representative mESC reference events include:
 
-The nested test can be applied to all datasets using `run_nested_test.r`. This script merges all datasets, applies quality filtering, and runs the nested kinetic test on each event.
+- `Ppp1r36dn`: BH q = 0.019720; estimated `sigma_c` = 0.01899230 min^-1
+- `Nsd1`: BH q = 0.012325; estimated `sigma_c` = 0.04742467 min^-1
 
-The main figures and tables reported in the manuscript can be reproduced using: `fig_diagnostics.r`, `fig_representative_dynamics.r`, and `go_analysis.r`.
+These are compact verification targets for the frozen manuscript analysis.
 
-#### Details to reproduce processed rMATS output from raw fastq files
+## Execution assumptions
 
-To reproduce the processing from raw FASTQ files we applied the following procedure:
+Most manuscript analyses were developed for Linux/HPC execution and document expected inputs and outputs in script headers. Some scripts retain project-relative working-directory assumptions because this repository preserves the exact research workflow.
 
-- For the GSE256335 dataset (M. musculus), reads were aligned to the reference genome using STAR (v2.7) in two-pass mode. Alignment parameters allowed a maximum of three mismatches per read, with end-to-end alignment and a maximum intron length of 299,999 bp. The shell script `GSE256335.sh` implements the above described FASTQ processing pipeline. 
+For exact reproduction, preserve the repository directory structure. The separate `postexportKinetics` package is intended to provide a portable user-facing interface without manuscript-specific path assumptions.
 
-- For the GSE207924 (human K562 and mouse NIH3T3 cells), we followed the workflow described by Chen et al. Adapter sequences and low-quality bases were removed using `cutadapt`, reads were aligned to a chimeric reference genome, retrieved from Zenodo, using STAR (v2.7), and aligned reads were then filtered using `samtools` to remove secondary alignments, PCR duplicates, and unmapped mates, and subsequently partitioned into host-specific, mitochondrial, and spike-in subsets based on chromosome identifiers. The shell script `GSE207924.sh` implements the above described FASTQ processing pipeline. 
+## Random-number generation and parallel execution
 
-- For the GSE83620 (D. melanogaster), initial quality control and adapter trimming were performed using `fastp`, including poly-G tail removal. Reads were aligned to the D. melanogaster (BDGP6) and S. cerevisiae (R64-1) genomes, the latter serving as a normalization spike-in. The shell script `GSE83620.sh` implements the above described FASTQ processing pipeline.
+Simulation and bootstrap scripts explicitly control random-number generation. Parallelization and seed handling are documented in relevant script headers. When validating the frozen analysis, preserve the script-level seed strategy unless numerical equivalence of an alternative strategy has been established.
 
-Intron retention (RI) events were quantified using rMATS (v4.1), configured for paired-end reads in the GSE207924 and GSE256335 datasets and single-end reads in GSE83620, all with support for variable read lengths. This analysis provided event-level counts for inclusion isoforms (reads supporting intron retention) and skipping isoforms (reads supporting exon–exon junctions) across nuclear and cytoplasmic compartments at all time points.
+## Session information
 
-Subsequent downstream processing was performed in R to integrate and refine the raw output. To account for technical variability in sequencing depth and sample recovery, raw counts for GSE207924 and GSE83620 were normalized using exogenous spike-ins: ERCC counts for the human and mouse datasets, and yeast-mapped reads for the Drosophila dataset. Counts were first adjusted for effective isoform length and then scaled by the total number of uniquely mapped spike-in reads. For GSE256335, counts were adjusted for effective isoform length, and a sample-specific normalization factor was computed by summing the expression levels of all isoforms quantified by RSEM, thereby accounting for total transcriptional output. To correct for differences in RNA recovery between nuclear and cytoplasmic fractions, scaling coefficients (0.39 for nuclear and 0.15 for cytoplasmic fractions) were applied as described by Steinbrecht et al.
+Session information is retained for key final computational runs where available, including the corrected factorial benchmark, to document the R environment and package versions used.
 
-### Settings
+## Intentionally excluded artifacts
 
-All scripts assume that the repository has been cloned in the home directory (~) and include explicit documentation in their headers, describing required input files, output formats, model parameters, and any other parameter for the reproduction of results. 
+The Git repository intentionally excludes large or regenerable artifacts such as:
 
-To reproduce the processed rMATS output starting from raw FASTQ files, the provided shell scripts are designed to run in a recent Linux environment (Bash, R, wget, gzip) with the following tools properly installed and configured:
-- `SRA Toolkit` - https://hpc.nih.gov/apps/sratoolkit.html
-- `cutadapt` - https://cutadapt.readthedocs.io/en/stable/
-- `STAR` - https://github.com/alexdobin/STAR
-- `samtools` - https://www.htslib.org/
-- `rMATS` - https://rnaseq-mats.sourceforge.io/
-- `fastp` - https://github.com/opengene/fastp
-- `rsem` - https://github.com/deweylab/RSEM
+- raw FASTQ and BAM files;
+- genome/transcriptome indexes;
+- large intermediate `.rdata` objects;
+- benchmark checkpoints and progress files;
+- local third-party software installations;
+- diagnostic figures not used in the manuscript;
+- wet-lab primer-design intermediates.
 
+The frozen Git/Zenodo release is intended to archive the scientific code, processed inputs required for documented workflows, lightweight verification summaries, and manuscript-facing supplementary outputs.
 
+## External software
 
+Raw-read preprocessing requires recent versions of:
 
+- SRA Toolkit
+- cutadapt
+- STAR
+- samtools
+- rMATS
+- fastp
+- RSEM
+
+Dataset-specific assumptions are documented in the preprocessing workflows and in the manuscript Supplementary Methods.
