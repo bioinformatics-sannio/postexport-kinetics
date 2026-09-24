@@ -1,0 +1,40 @@
+cff-version: 1.2.0
+message: "If you use this software or analysis workflow, please cite the archived software release and the associated manuscript."
+title: "Post-export RNA kinetics: reproducibility code for compartment-resolved kinetic inference"
+type: software
+version: "manuscript-revision-v1.0"
+license: "MIT"
+
+authors:
+  - family-names: "Faretra"
+    given-names: "L."
+  - family-names: "Napolitano"
+    given-names: "F."
+  - family-names: "Pancione"
+    given-names: "M."
+  - family-names: "Cerulo"
+    given-names: "L."
+
+repository-code: "https://github.com/bioinformatics-sannio/postexport-kinetics"
+
+abstract: >-
+  Reproducibility code and analysis workflows accompanying the revised
+  Bioinformatics manuscript BIOINF-2026-0699. The repository implements
+  compartment-resolved RNA kinetic modeling, constrained nested-model
+  comparison, replicate-level generative bootstrap inference, corrected
+  synthetic benchmarking, pseudo-shutoff and model-misspecification analyses,
+  practical-identifiability analyses, comparator analyses, and final real-data
+  workflows. The post-export conversion parameter is interpreted
+  phenomenologically and does not by itself identify a specific molecular
+  mechanism.
+
+keywords:
+  - RNA kinetics
+  - post-export RNA processing
+  - post-export conversion
+  - compartment-resolved RNA
+  - transcriptomics
+  - kinetic modeling
+  - bootstrap inference
+  - retained introns
+  - reproducible research
